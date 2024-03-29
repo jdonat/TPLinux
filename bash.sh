@@ -35,8 +35,7 @@ function config_site(){
 	#cat /var/www/$1/index.html
 }
 #df
-#*/5 * * * * johndoe echo "helloworld" > /home/johndoe/Bureau/TP/helloworld.txt >/dev/null 2>&1
-#(crontab -l 2>/dev/null; echo "*/5 * * * * echo 'helloworld' > /home/johndoe/Bureau/TP/helloworld.txt") | crontab -
+
 function get_template_config() {
 	cp /etc/nginx/sites-available/default ./template.conf
 }
@@ -59,6 +58,7 @@ function add_cron() {
 	#(crontab -l 2>/dev/null; echo "*/5 * * * * echo 'helloworld' >> /home/johndoe/Bureau/TP/helloworld.txt") | crontab -
 	
 	echo -e "*/5 * * * * echo 'helloworld' >> /home/johndoe/Bureau/TP/helloworld.txt\n* */1 * * * bash /home/johndoe/Bureau/TP/disk_monitor.sh" > cronfile.txt
+	chmod 777 cronfile.txt
 	crontab cronfile.txt
 	echo $?
 	/etc/init.d/cron restart
