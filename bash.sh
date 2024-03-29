@@ -1,26 +1,44 @@
 #!/bin/bash
 
+if [ "$EUID" -ne 0 ]; then
+	echo "Run as root";
+	exit
+fi
+
 function createUser() {
-	echo "user: $1 created with password: $2"
 	useradd -p "$2" "$1"
+	echo "user: $1 created with password: $2"
 }
 
-function updateRepo(){
-	apt update
-	apt upgrade
-	apt autoremove
-	apt autoclean
-	apt install nginx
+function installation(){
+	apt -y update
+	apt -y upgrade
+	apt -y autoremove
+	apt -y autoclean
+	apt -y install nginx
+	apt -y install php8.1-fpm
+	database="dbTest"
+	table="tableTest"
+	create_mysql_db $database $table
 }
 
 function config_site(){
-	cp ./template.conf /etc/nginx/sites-available/$1.conf
-	chmod 777 /etc/nginx/sites-available/$1.conf
-  	sed -i "s/HTTP_PORT/$2/g" /etc/nginx/sites-available/$1.conf
-  	sed -i "s/SITE_NAME/$1/g" /etc/nginx/sites-available/$1.conf
-	#cat /etc/nginx/sites-available/$1.conf
-	chmod 644 /etc/nginx/sites-available/$1.conf
-
+	
+	if [ -f "/etc/nginx/sites-available/$1.conf" ]; then
+		echo "La configuration existe deja"
+		exit
+	else
+		if [ "$3" = "php" ]; then
+			cp ./template_php.conf /etc/nginx/sites-available/$1.conf
+		else
+			cp ./template.conf /etc/nginx/sites-available/$1.conf
+		fi
+		
+		chmod 777 /etc/nginx/sites-available/$1.conf
+	  	sed -i "s/HTTP_PORT/$2/g" /etc/nginx/sites-available/$1.conf
+	  	sed -i "s/SITE_NAME/$1/g" /etc/nginx/sites-available/$1.conf
+		chmod 644 /etc/nginx/sites-available/$1.conf
+	fi
 	if [ -d "/var/www/$1" ]; then
 		echo "Le dossier /var/www/$1 existe deja"
 	else
@@ -28,13 +46,23 @@ function config_site(){
 		echo "Dossier cree : /var/www/$1"
 	fi
 	
-	cp ./index.html /var/www/$1/index.html
-	chmod 777 /var/www/$1/index.html
-	sed -i "s/SITE_NAME/$1/g" /var/www/$1/index.html
-	chmod 644 /var/www/$1/index.html
-	#cat /var/www/$1/index.html
+	if [ -f "/var/www/$1/index.html" ]; then
+		echo "L index existe deja"
+		exit
+	else
+		if [ "$3" = "php" ]; then
+			cp ./index.php /var/www/$1/index.php
+			chmod 777 /var/www/$1/index.php
+			sed -i "s/SITE_NAME/$1/g" /var/www/$1/index.php
+			chmod 644 /var/www/$1/index.php
+		else
+			cp ./index.html /var/www/$1/index.html
+			chmod 777 /var/www/$1/index.html
+			sed -i "s/SITE_NAME/$1/g" /var/www/$1/index.html
+			chmod 644 /var/www/$1/index.html
+		fi
+	fi
 }
-#df
 
 function get_template_config() {
 	cp /etc/nginx/sites-available/default ./template.conf
@@ -43,7 +71,6 @@ function get_template_config() {
 function activate_site() {
 	if [ -f "/etc/nginx/sites-available/$1.conf" ]; then
 		ln -s /etc/nginx/sites-available/$1.conf /etc/nginx/sites-enabled/$1.conf;
-		#servive nginx restart;
 		service nginx reload;
 		nginx -t
 		if [ "$?" != 0 ]; then
@@ -55,20 +82,23 @@ function activate_site() {
 }
 
 function add_cron() {
-	#(crontab -l 2>/dev/null; echo "*/5 * * * * echo 'helloworld' >> /home/johndoe/Bureau/TP/helloworld.txt") | crontab -
-	
 	echo -e "*/5 * * * * echo 'helloworld' >> /home/johndoe/Bureau/TP/helloworld.txt\n* */1 * * * bash /home/johndoe/Bureau/TP/disk_monitor.sh" > cronfile.txt
 	chmod 777 cronfile.txt
 	crontab cronfile.txt
-	echo $?
+	rm cronfile.txt
 	/etc/init.d/cron restart
-	#cat cronfile.txt
-	
-	
-	#{ crontab -l; echo "*/5 * * * * echo 'helloworld' >> /home/johndoe/Bureau/TP/helloworld.txt"; } | crontab -
-	#{ crontab -l; echo "* */1 * * * bash /home/johndoe/Bureau/TP/disk_monitor.sh"; } | crontab -
-	
-	#crontab -l|sed "\$a* */1 * * * bash /home/johndoe/Bureau/TP/disk_monitor.sh"|crontab -
+}
+
+function generate_ssh() {
+	ssh-keygen -t rsa -b 4096 -N "My secret passphrase" -f mykey
+}
+
+function configure_php_site() {
+	config_site $1 $2 php
+}
+
+function delete_site() {
+	rm -r /etc/nginx/sites-available/$1.conf /etc/nginx/sites-enabled/$1.conf /var/www/$1
 }
 
 case $1 in
@@ -76,7 +106,7 @@ case $1 in
 	createUser $username $password
 	;;
 	"install")
-	updateRepo
+	installation
 	;;
 	"configure_site")
 	config_site $2 $3
@@ -90,8 +120,17 @@ case $1 in
    	"add_cronjob")
    	add_cron
    	;;
+   	"generate_ssh")
+   	generate_ssh
+   	;;
+   	"configure_php_site")
+   	configure_php_site $2 $3
+   	;;
+   	"delete_site")
+   	delete_site $2
+   	;;
 	*)
-	echo -e "Erreur : le 1er parametre passé au script doit être ∕nuser pour crer un nouvel utilisateur∕nou install pour mettre a jour les repositories et installer nginx\nconfigure_site pour la config de defaut d un site\ntemplate pour recuperer dans le dossier courant un template de config pour nginx"
+	echo -e "Erreur : Le 1er parametre doit etre user, install, configure_site, template, active_site, add_cronjob, generate_ssh, configure_php_site"
 	;;
 esac
 
